@@ -30,7 +30,7 @@ function draw(){
 
 let ctx,stream,analyser,data,dest,rec,chunks=[],recording=false,playing=false,active=false,starting=false;
 let cand=0,lastAbove=0,lastLoud=0,startedAt=0,ignoreUntil=0,floor=0.008,hold=0,calib=0;
-const SILENCE=1000,MAXMS=15000,MINVOICE=250,PREROLL_CONFIRM=70,TAIL_IGNORE=500;let boostUntil=0;
+const SILENCE=1000,MAXMS=15000,MINVOICE=600,PREROLL_CONFIRM=200,TAIL_IGNORE=500;let boostUntil=0;
 const rms=(a,n)=>{n.getByteTimeDomainData(a);let s=0;for(let i=0;i<a.length;i++){const v=(a[i]-128)/128;s+=v*v}return Math.sqrt(s/a.length)};
 function setMouth(open){const t=performance.now();const p=open?'talk':'idle';if(p!==pose&&t>hold){pose=p;hold=t+90}}
 async function start(){
@@ -38,7 +38,7 @@ async function start(){
  try{
   ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();
   await ctx.resume();
-  stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:{ideal:true},noiseSuppression:{ideal:false},autoGainControl:{ideal:true},voiceIsolation:{ideal:true},channelCount:1}});
+  stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:{ideal:true},noiseSuppression:{ideal:true},autoGainControl:{ideal:true},voiceIsolation:{ideal:true},channelCount:1}});
   const src=ctx.createMediaStreamSource(stream);
   // voice band filter: cut rumble/hum below 120Hz and hiss above 5kHz, plus a notch at mains hum
   const hp=ctx.createBiquadFilter();hp.type='highpass';hp.frequency.value=120;hp.Q.value=0.8;
@@ -46,7 +46,7 @@ async function start(){
   const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=5000;lp.Q.value=0.7;
   const notch=ctx.createBiquadFilter();notch.type='notch';notch.frequency.value=50;notch.Q.value=12;
   src.connect(hp);hp.connect(hp2);hp2.connect(lp);lp.connect(notch);
-  analyser=ctx.createAnalyser();analyser.fftSize=1024;data=new Uint8Array(analyser.fftSize);const det=ctx.createGain();det.gain.value=4;notch.connect(det);det.connect(analyser);  // detection path is boosted so quiet voices trigger easily
+  analyser=ctx.createAnalyser();analyser.fftSize=1024;data=new Uint8Array(analyser.fftSize);const det=ctx.createGain();det.gain.value=3;notch.connect(det);det.connect(analyser);  // detection path is boosted so quiet voices trigger easily
   dest=ctx.createMediaStreamDestination();notch.connect(dest);   // recording uses the filtered signal
   calib=performance.now()+600;active=true;loop();
  }catch(e){}
@@ -54,7 +54,7 @@ async function start(){
 }
 addEventListener('pointerdown',()=>{ctx&&ctx.resume();start()});
 start();
-function threshold(){return Math.min(0.06,Math.max(0.015,floor*2.2))}  // stricter right after he speaks, relaxing back to normal
+function threshold(){return Math.min(0.09,Math.max(0.03,floor*3))}  // stricter right after he speaks, relaxing back to normal
 function loop(){
  if(!active)return;requestAnimationFrame(loop);
  const now=performance.now();
@@ -67,11 +67,11 @@ function loop(){
    if(!cand){cand=now;beginRec();pose='listen'}
    else if(now-cand>PREROLL_CONFIRM){recording=true;startedAt=cand;lastLoud=now;pose='listen'}
   }else{
-   if(cand&&now-lastAbove>250){cancelRec();cand=0;pose='idle'}   // short blip/click: ignore
-   if(!cand)floor=floor*0.985+Math.min(l,floor*2.5)*0.015; // adapt to background noise
+   if(cand&&now-lastAbove>150){cancelRec();cand=0;pose='idle'}   // short blip/click: ignore
+   if(!cand)floor=floor*0.97+Math.min(l,floor*3)*0.03; // adapt to background noise
   }
  }else{
-  if(l>thr*0.6)lastLoud=now;
+  if(l>thr*0.75)lastLoud=now;
   if(now-lastLoud>SILENCE||now-startedAt>MAXMS)endRec(now);  // waits 3s of silence
  }
 }
